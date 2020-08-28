@@ -13,37 +13,64 @@ std::chrono::high_resolution_clock::duration forEachTestWithoutThreadPool(std::v
   return end - start;
 }
 
-std::chrono::high_resolution_clock::duration forEachTestWithThreadPool(std::vector<int>& v,
-                                                                       const std::function<void(int&)>& f) {
+std::chrono::high_resolution_clock::duration forEachTestWithThreadPoolWithCreation(std::vector<int>& v,
+                                                                                   const std::function<void(int&)>& f,
+                                                                                   std::size_t thread_count = std::thread::hardware_concurrency()) {
   auto start = std::chrono::high_resolution_clock::now();
   {
-    ThreadPool thread_pool(2, DestructionPolicy::WAIT_ALL);
+    ThreadPool thread_pool(thread_count, DestructionPolicy::WAIT_ALL);
     thread_pool.forEach(v.begin(), v.end(), f);
   }
   auto end = std::chrono::high_resolution_clock::now();
   return end - start;
 }
 
-void forEachTest() {
-  std::vector<int> v(100000, 1);
-  auto f = [](int& x) {
-    std::this_thread::sleep_for(1us);
-    x *= 3;
+std::chrono::high_resolution_clock::duration forEachTestWithThreadPoolWithoutCreation(std::vector<int>& v,
+                                                                                      const std::function<void(int&)>& f,
+                                                                                      ThreadPool& thread_pool) {
+  //thread_pool.clearTasks();
+  auto start = std::chrono::high_resolution_clock::now();
+  thread_pool.forEach(v.begin(), v.end(), f);
+  thread_pool.waitTasks();
+  auto end = std::chrono::high_resolution_clock::now();
+  return end - start;
+}
+
+void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
+  constexpr size_t vector_size = 1000000;
+  constexpr auto sleep_duration = 10us;
+  constexpr int val = 1;
+  constexpr int mult = 3;
+  constexpr int prod = val * mult;
+  using duration_cast_type = std::chrono::seconds;
+
+  std::vector<int> v(vector_size, val);
+  auto f = [mult, &sleep_duration](int& x) {
+    std::this_thread::sleep_for(sleep_duration);
+    x *= mult;
   };
 
-  auto seq_d = std::chrono::duration_cast<std::chrono::milliseconds>(forEachTestWithoutThreadPool(v, f)).count();
+  const auto seq_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithoutThreadPool(v, f)).count();
   std::cout << "forEach without thread pool took : " << seq_d << "\n";
-  std::for_each(v.begin(), v.end(), [](int x) { assert(x == 3 && "x should be 3");});
+  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEachTest without thread pool assertion failed."); });
+  std::fill(v.begin(), v.end(), val);
 
-  std::fill(v.begin(), v.end(), 1);
+  std::cout << "Thread count: " << thread_count << "\n";
 
-  auto par_d = std::chrono::duration_cast<std::chrono::milliseconds>(forEachTestWithThreadPool(v, f)).count();
-  std::cout << "forEach with thread pool took : " << par_d << "\n";
-  std::for_each(v.begin(), v.end(), [](int x) { assert(x == 3 && "x should be 3");});
+  const auto par_w_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithCreation(v, f, thread_count)).count();
+  std::cout << "forEach with thread pool with creation and destruction took : " << par_w_tp_d << "\n";
+  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool with creation and destruction assertion failed."); });
+  std::fill(v.begin(), v.end(), val);
+
+  ThreadPool thread_pool(thread_count);
+  const auto par_wo_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithoutCreation(v, f, thread_pool)).count();
+  std::cout << "forEach with thread pool without creation and destruction took : " << par_wo_tp_d << "\n";
+  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool without creation and destruction assertion failed."); });
 }
 
 int main() {
-   forEachTest();
+  std::cout << "hardware_concurrency: " << std::thread::hardware_concurrency() << "\n";
+  forEachTest(4);
 
 //  std::vector<int> v(1000, 1);
 //

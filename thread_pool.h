@@ -72,7 +72,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
         idle_workers_count++;
 
         while (waiting) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
         }
       });
     }
@@ -108,7 +108,7 @@ void ThreadPool::waitTasks() {
   }
 
   while (idle_workers_count != workers.size()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::yield();//sleep_for(std::chrono::milliseconds(50));
   }
 
   for (auto& worker: workers) {
