@@ -12,7 +12,7 @@ class Worker {
   using StealCallback = std::function<bool(Task&)>;
   using IdleCallback = std::function<void()>;
 
-  explicit Worker(StealCallback, IdleCallback);
+  explicit Worker(std::shared_ptr<Profiler>, StealCallback, IdleCallback);
   ~Worker();
 
   Worker(const Worker&) = delete;
@@ -37,15 +37,30 @@ class Worker {
   std::atomic_bool terminated;
   std::atomic_bool waiting;
   std::thread thread;
+
+  std::shared_ptr<Profiler> profiler;
 };
 
 template<typename Task>
-Worker<Task>::Worker(StealCallback steal_callback, IdleCallback idle_callback)
-    : terminated(false),
+Worker<Task>::Worker(std::shared_ptr<Profiler> profiler_ptr, StealCallback steal_callback, IdleCallback idle_callback)
+    : profiler(profiler_ptr),
+      queue(std::move(profiler_ptr)),
+      terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
       idle_callback(std::move(idle_callback)),
       thread(&Worker::workerFunction, this) {
+}
+
+template<typename Task>
+Worker<Task>::Worker(Worker&& other)
+    : queue(std::move(other.queue)),
+      steal_callback(std::move(other.steal_callback)),
+      idle_callback(std::move(other.idle_callback)),
+      terminated(other.terminated.load()),
+      waiting(other.waiting.load()),
+      thread(std::move(other.thread)),
+      profiler(std::move(other.profiler)) {
 }
 
 template<typename Task>
@@ -66,16 +81,6 @@ void Worker<Task>::clearTasks() {
 template<typename Task>
 bool Worker<Task>::trySteal(Task& task) {
   return queue.trySteal(task);
-}
-
-template<typename Task>
-Worker<Task>::Worker(Worker&& other)
-    : queue(std::move(other.queue)),
-      steal_callback(std::move(other.steal_callback)),
-      idle_callback(std::move(other.idle_callback)),
-      terminated(other.terminated.load()),
-      waiting(other.waiting.load()),
-      thread(std::move(other.thread)) {
 }
 
 template<typename Task>

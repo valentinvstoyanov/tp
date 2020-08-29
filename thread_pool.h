@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <functional>
 #include <random>
+#include <utility>
 #include "join_threads.h"
 #include "destruction_policy.h"
 #include "thread_safe_queue.h"
@@ -18,7 +19,8 @@ class ThreadPool {
   using Task = std::function<void()>;
 
   explicit ThreadPool(std::size_t thread_count = std::thread::hardware_concurrency(),
-                      DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT);
+                      DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT,
+                      std::shared_ptr<Profiler> = nullptr);
   ~ThreadPool();
 
   void add(Task task);
@@ -39,10 +41,13 @@ class ThreadPool {
   std::random_device random_device;
   std::mt19937 engine;
   std::uniform_int_distribution<std::size_t> distribution;
+
+  std::shared_ptr<Profiler> profiler;
 };
 
-ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy)
-    : terminated(false),
+ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy, std::shared_ptr<Profiler> profiler_ptr)
+    : profiler(std::move(profiler_ptr)),
+      terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
       idle_workers_count(0),
@@ -54,7 +59,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
   workers.reserve(thread_count);
   try {
     for (auto i = 0; i < thread_count; ++i) {
-      workers.emplace_back([this](Task& task) {
+      workers.emplace_back(profiler, [this](Task& task) {
         if (terminated) {
           return false;
         }

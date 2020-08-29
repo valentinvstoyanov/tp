@@ -69,8 +69,19 @@ void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency())
 }
 
 int main() {
-  std::cout << "hardware_concurrency: " << std::thread::hardware_concurrency() << "\n";
-  forEachTest(4);
+//  std::cout << "hardware_concurrency: " << std::thread::hardware_concurrency() << "\n";
+//  forEachTest(4);
+
+  auto profiler = std::make_shared<Profiler>();
+  ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT, profiler);
+  for (auto i = 0; i < 10; ++i) {
+    thread_pool.add([i] {
+      std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));
+      std::cout << i << '\n';
+    });
+  }
+  thread_pool.waitTasks();
+  std::cout << *profiler << std::endl;
 
 //  std::vector<int> v(1000, 1);
 //
