@@ -42,12 +42,14 @@ ProfiledMutex& ProfiledMutex::operator=(ProfiledMutex&& other) {
 
 void ProfiledMutex::lock() {
   mutex.lock();
-  profiler->logLock();
+  if (profiler)
+    profiler->logLock();
 }
 
 void ProfiledMutex::unlock() {
   mutex.unlock();
-  profiler->logUnlock();
+  if (profiler)
+    profiler->logUnlock();
 }
 
 #endif //TP__PROFILED_MUTEX_H_

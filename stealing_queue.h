@@ -4,13 +4,20 @@
 #include <mutex>
 #include <deque>
 #include <condition_variable>
+
+#ifndef NDEBUG
 #include "profiler.h"
 #include "profiled_mutex.h"
+#endif
 
 template<typename T>
 class StealingQueue {
  public:
-  StealingQueue(const std::shared_ptr<Profiler>&);
+  StealingQueue() = default;
+
+#ifndef NDEBUG
+  explicit StealingQueue(const std::shared_ptr<Profiler>&);
+#endif
 
   StealingQueue(const StealingQueue&) = delete;
   StealingQueue& operator=(const StealingQueue&) = delete;
@@ -31,24 +38,34 @@ class StealingQueue {
 
   void notify();
  private:
+#ifndef NDEBUG
   using MutexType = ProfiledMutex;
+  using CondVarType = std::condition_variable_any;
+
+  std::shared_ptr<Profiler> profiler;
+#else
+  using MutexType = std::mutex;
+  using CondVarType = std::condition_variable;
+#endif
 
   mutable MutexType mutex;
   std::deque<T> deque;
-  std::condition_variable_any event;
-
-  std::shared_ptr<Profiler> profiler;
+  CondVarType event;
 };
 
+#ifndef NDEBUG
 template<typename T>
 StealingQueue<T>::StealingQueue(const std::shared_ptr<Profiler>& profiler_ptr): profiler(profiler_ptr), mutex(profiler_ptr) {
 }
+#endif
 
 template<typename T>
 StealingQueue<T>::StealingQueue(StealingQueue&& other) {
   std::lock_guard<MutexType> lock(other.mutex);
   deque = std::move(other.deque);
+#ifndef NDEBUG
   profiler = std::move(other.profiler);
+#endif
 }
 
 template<typename T>
@@ -62,7 +79,9 @@ StealingQueue<T>& StealingQueue<T>::operator=(StealingQueue&& other) {
     std::lock_guard<MutexType> this_lock(mutex, std::adopt_lock);
     std::lock_guard<MutexType> other_lock(other.mutex, std::adopt_lock);
     deque = std::move(other.deque);
+#ifndef NDEBUG
     profiler = std::move(other.profiler);
+#endif
   }
   event.notify_all();
   return *this;
@@ -99,10 +118,17 @@ template<typename T>
 template<typename WaitPred, typename PopPred>
 bool StealingQueue<T>::waitAndPopIf(T& val, const WaitPred& wait_pred, const PopPred& pop_pred) {
   std::unique_lock<MutexType> lock(mutex);
+#ifndef NDEBUG
   const auto start = Profiler::Clock::now();
   event.wait<std::unique_lock<MutexType>>(lock, [this, &wait_pred] { return wait_pred(deque.empty()); });
   const auto end = Profiler::Clock::now();
-  profiler->logWait(end - start);
+  if (profiler) {
+    profiler->logWait(end - start);
+  }
+#else
+  event.wait(lock, [this, &wait_pred] { return wait_pred(deque.empty()); });
+#endif
+
   if (pop_pred(deque.empty())) {
     val = std::move(deque.front());
     deque.pop_front();

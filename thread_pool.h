@@ -19,8 +19,14 @@ class ThreadPool {
   using Task = std::function<void()>;
 
   explicit ThreadPool(std::size_t thread_count = std::thread::hardware_concurrency(),
-                      DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT,
-                      const std::shared_ptr<Profiler>& = nullptr);
+                      DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT);
+
+#ifndef NDEBUG
+  explicit ThreadPool(const std::shared_ptr<Profiler>&,
+                      std::size_t thread_count = std::thread::hardware_concurrency(),
+                      DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT);
+#endif
+
   ~ThreadPool();
 
   void add(Task task);
@@ -42,10 +48,59 @@ class ThreadPool {
   std::mt19937 engine;
   std::uniform_int_distribution<std::size_t> distribution;
 
+#ifndef NDEBUG
   std::shared_ptr<Profiler> profiler;
+#endif
 };
 
-ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy, const std::shared_ptr<Profiler>& profiler_ptr)
+ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy)
+    : terminated(false),
+      waiting(false),
+      destruction_policy(destruction_policy),
+      idle_workers_count(0),
+      engine(random_device()) {
+  assert(thread_count > 0 && "The supplied thread count value cannot be 0");
+
+  distribution = std::uniform_int_distribution<std::size_t>(0, thread_count - 1);
+
+  workers.reserve(thread_count);
+  try {
+    for (auto i = 0; i < thread_count; ++i) {
+      workers.emplace_back(
+          [this](Task& task) {
+            if (terminated) {
+              return false;
+            }
+
+            auto starting_index = distribution(engine);
+
+            for (auto i = 0; i < workers.size() - 1; ++i) {
+              if (workers[(starting_index + i) % workers.size()].trySteal(task)) {
+                return true;
+              }
+            }
+
+            return false;
+          },
+          [this] {
+            idle_workers_count++;
+
+            while (waiting) {
+              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
+            }
+          }
+      );
+    }
+  } catch (...) {
+    terminate();
+    throw;
+  }
+}
+
+#ifndef NDEBUG
+ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
+                       std::size_t thread_count,
+                       DestructionPolicy destruction_policy)
     : profiler(profiler_ptr),
       terminated(false),
       waiting(false),
@@ -59,33 +114,38 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
   workers.reserve(thread_count);
   try {
     for (auto i = 0; i < thread_count; ++i) {
-      workers.emplace_back(profiler_ptr, [this](Task& task) {
-        if (terminated) {
-          return false;
-        }
+      workers.emplace_back(
+          [this](Task& task) {
+            if (terminated) {
+              return false;
+            }
 
-        auto starting_index = distribution(engine);
+            auto starting_index = distribution(engine);
 
-        for (auto i = 0; i < workers.size() - 1; ++i) {
-          if (workers[(starting_index + i) % workers.size()].trySteal(task)) {
-            return true;
-          }
-        }
+            for (auto i = 0; i < workers.size() - 1; ++i) {
+              if (workers[(starting_index + i) % workers.size()].trySteal(task)) {
+                return true;
+              }
+            }
 
-        return false;
-      }, [this] {
-        idle_workers_count++;
+            return false;
+          },
+          [this] {
+            idle_workers_count++;
 
-        while (waiting) {
-          std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
-        }
-      });
+            while (waiting) {
+              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
+            }
+          },
+          profiler_ptr
+      );
     }
   } catch (...) {
     terminate();
     throw;
   }
 }
+#endif
 
 ThreadPool::~ThreadPool() {
   if (destruction_policy == DestructionPolicy::WAIT_CURRENT) {
