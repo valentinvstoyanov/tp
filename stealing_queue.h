@@ -157,7 +157,7 @@ void StealingQueue<T>::clear() {
 
 template<typename T>
 void StealingQueue<T>::notify() {
-  event.notify_all();
+  event.notify_one();
 }
 
 #endif //TP__STEALING_QUEUE_H_

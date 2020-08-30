@@ -188,13 +188,19 @@ void ThreadPool::forEach(InputIt first, InputIt last, UnaryFunction f) {
   auto tasks_per_worker_count = tasks_count / workers.size();
   auto remaining_tasks_count = tasks_count % workers.size();
 
-  for (auto& worker: workers) {
-    worker.add([first, &f, tasks_per_worker_count] { std::for_each(first, first + tasks_per_worker_count, f); });
-    first += tasks_per_worker_count;
+  if (tasks_per_worker_count > 0) {
+    for (auto& worker: workers) {
+      worker.add([first, &f, tasks_per_worker_count, this] {
+        forEach(first, first + tasks_per_worker_count, f);
+      });
+      first += tasks_per_worker_count;
+    }
   }
 
   if (remaining_tasks_count > 0) {
-    add([first, last, &f] { std::for_each(first, last, f); });
+    add([first, last, &f, this] {
+      forEach(first, last, f);
+    });
   }
 }
 
