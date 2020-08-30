@@ -10,7 +10,7 @@
 template<typename T>
 class StealingQueue {
  public:
-  StealingQueue(std::shared_ptr<Profiler>);
+  StealingQueue(const std::shared_ptr<Profiler>&);
 
   StealingQueue(const StealingQueue&) = delete;
   StealingQueue& operator=(const StealingQueue&) = delete;
@@ -41,8 +41,33 @@ class StealingQueue {
 };
 
 template<typename T>
-StealingQueue<T>::StealingQueue(std::shared_ptr<Profiler> profiler_ptr): profiler(profiler_ptr), mutex(std::move(profiler_ptr)) {
+StealingQueue<T>::StealingQueue(const std::shared_ptr<Profiler>& profiler_ptr): profiler(profiler_ptr), mutex(profiler_ptr) {
 }
+
+template<typename T>
+StealingQueue<T>::StealingQueue(StealingQueue&& other) {
+  std::lock_guard<MutexType> lock(other.mutex);
+  deque = std::move(other.deque);
+  profiler = std::move(other.profiler);
+}
+
+template<typename T>
+StealingQueue<T>& StealingQueue<T>::operator=(StealingQueue&& other) {
+  if (this == &other) {
+    return *this;
+  }
+
+  {
+    std::lock(mutex, other.mutex);
+    std::lock_guard<MutexType> this_lock(mutex, std::adopt_lock);
+    std::lock_guard<MutexType> other_lock(other.mutex, std::adopt_lock);
+    deque = std::move(other.deque);
+    profiler = std::move(other.profiler);
+  }
+  event.notify_all();
+  return *this;
+}
+
 
 template<typename T>
 void StealingQueue<T>::push(T val) {
@@ -74,7 +99,10 @@ template<typename T>
 template<typename WaitPred, typename PopPred>
 bool StealingQueue<T>::waitAndPopIf(T& val, const WaitPred& wait_pred, const PopPred& pop_pred) {
   std::unique_lock<MutexType> lock(mutex);
+  const auto start = Profiler::Clock::now();
   event.wait<std::unique_lock<MutexType>>(lock, [this, &wait_pred] { return wait_pred(deque.empty()); });
+  const auto end = Profiler::Clock::now();
+  profiler->logWait(end - start);
   if (pop_pred(deque.empty())) {
     val = std::move(deque.front());
     deque.pop_front();
@@ -99,30 +127,6 @@ template<typename T>
 void StealingQueue<T>::clear() {
   std::lock_guard<MutexType> lock(mutex);
   deque.clear();
-}
-
-template<typename T>
-StealingQueue<T>::StealingQueue(StealingQueue&& other) {
-  std::lock_guard<MutexType> lock(other.mutex);
-  deque = std::move(other.deque);
-  profiler = std::move(other.profiler);
-}
-
-template<typename T>
-StealingQueue<T>& StealingQueue<T>::operator=(StealingQueue&& other) {
-  if (this == &other) {
-    return *this;
-  }
-
-  {
-    std::lock(mutex, other.mutex);
-    std::lock_guard<MutexType> this_lock(mutex, std::adopt_lock);
-    std::lock_guard<MutexType> other_lock(other.mutex, std::adopt_lock);
-    deque = std::move(other.deque);
-    profiler = std::move(other.profiler);
-  }
-  event.notify_all();
-  return *this;
 }
 
 template<typename T>

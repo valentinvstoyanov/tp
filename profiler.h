@@ -14,16 +14,23 @@ class Profiler {
 
   struct ThreadInfo {
     Duration lock_duration = Duration::zero();
+    Duration wait_duration = Duration::zero();
+    Duration tasks_duration = Duration::zero();
+
     std::size_t completed_tasks_count = 0;
+
     unsigned locks_count = 0;
     unsigned unlocks_count = 0;
 
+
     friend std::ostream& operator<<(std::ostream& os, const ThreadInfo& thread_info) {
       return os << "\tLock time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(thread_info.lock_duration).count()
-                << "\tLocks count: " << thread_info.locks_count
-                << "\tUnlocks count: " << thread_info.unlocks_count
-                << "\tLocks - Unlocks diff: " << thread_info.locks_count - thread_info.unlocks_count
-                << "\tCompleted tasks count:" << thread_info.completed_tasks_count;
+                << "\n\tLocks count: " << thread_info.locks_count
+                << "\n\tUnlocks count: " << thread_info.unlocks_count
+                << "\n\tLocks - Unlocks diff: " << thread_info.locks_count - thread_info.unlocks_count
+                << "\n\tCompleted tasks count: " << thread_info.completed_tasks_count
+                << "\n\tTasks time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(thread_info.tasks_duration).count()
+                << "\n\tAverage task time: " << (thread_info.completed_tasks_count == 0 ? 0 : std::chrono::duration_cast<std::chrono::nanoseconds>(thread_info.tasks_duration / thread_info.completed_tasks_count).count());
     }
   };
 
@@ -37,6 +44,9 @@ class Profiler {
 
   void logLock();
   void logUnlock();
+
+  void logWait(Duration);
+  void logTask(Duration);
 
   friend std::ostream& operator<<(std::ostream& os, const Profiler& profiler);
  private:
@@ -65,7 +75,6 @@ void Profiler::logLock() {
   auto& thread_info = thread_info_map[std::this_thread::get_id()];
   thread_info.lock_duration -= duration;
   thread_info.locks_count += 1;
-  //std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(thread_info.lock_duration).count() << "ms\n";
 }
 
 void Profiler::logUnlock() {
@@ -74,7 +83,6 @@ void Profiler::logUnlock() {
   auto& thread_info = thread_info_map[std::this_thread::get_id()];
   thread_info.lock_duration += duration;
   thread_info.unlocks_count += 1;
-  //std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(thread_info.lock_duration).count() << "ms\n";
 }
 
 std::ostream& operator<<(std::ostream& os, const Profiler& profiler) {
@@ -83,6 +91,19 @@ std::ostream& operator<<(std::ostream& os, const Profiler& profiler) {
     os << "Thread id : " << p.first << "\n" << p.second << "\n";
   }
   return os;
+}
+
+void Profiler::logWait(Duration duration) {
+  std::lock_guard<std::mutex> lock(mutex);
+  auto& thread_info = thread_info_map[std::this_thread::get_id()];
+  thread_info.wait_duration += duration;
+}
+
+void Profiler::logTask(Duration duration) {
+  std::lock_guard<std::mutex> lock(mutex);
+  auto& thread_info = thread_info_map[std::this_thread::get_id()];
+  thread_info.tasks_duration += duration;
+  thread_info.completed_tasks_count += 1;
 }
 
 #endif //TP__PROFILER_H_

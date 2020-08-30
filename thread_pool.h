@@ -20,7 +20,7 @@ class ThreadPool {
 
   explicit ThreadPool(std::size_t thread_count = std::thread::hardware_concurrency(),
                       DestructionPolicy destruction_policy = DestructionPolicy::WAIT_CURRENT,
-                      std::shared_ptr<Profiler> = nullptr);
+                      const std::shared_ptr<Profiler>& = nullptr);
   ~ThreadPool();
 
   void add(Task task);
@@ -45,8 +45,8 @@ class ThreadPool {
   std::shared_ptr<Profiler> profiler;
 };
 
-ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy, std::shared_ptr<Profiler> profiler_ptr)
-    : profiler(std::move(profiler_ptr)),
+ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_policy, const std::shared_ptr<Profiler>& profiler_ptr)
+    : profiler(profiler_ptr),
       terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
@@ -59,7 +59,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
   workers.reserve(thread_count);
   try {
     for (auto i = 0; i < thread_count; ++i) {
-      workers.emplace_back(profiler, [this](Task& task) {
+      workers.emplace_back(profiler_ptr, [this](Task& task) {
         if (terminated) {
           return false;
         }

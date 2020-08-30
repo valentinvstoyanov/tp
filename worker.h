@@ -12,7 +12,7 @@ class Worker {
   using StealCallback = std::function<bool(Task&)>;
   using IdleCallback = std::function<void()>;
 
-  explicit Worker(std::shared_ptr<Profiler>, StealCallback, IdleCallback);
+  explicit Worker(const std::shared_ptr<Profiler>&, StealCallback, IdleCallback);
   ~Worker();
 
   Worker(const Worker&) = delete;
@@ -42,9 +42,9 @@ class Worker {
 };
 
 template<typename Task>
-Worker<Task>::Worker(std::shared_ptr<Profiler> profiler_ptr, StealCallback steal_callback, IdleCallback idle_callback)
+Worker<Task>::Worker(const std::shared_ptr<Profiler>& profiler_ptr, StealCallback steal_callback, IdleCallback idle_callback)
     : profiler(profiler_ptr),
-      queue(std::move(profiler_ptr)),
+      queue(profiler_ptr),
       terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
@@ -93,7 +93,10 @@ void Worker<Task>::workerFunction() {
                            [this](bool empty) { return waiting || terminated || !empty; },
                            [this](bool empty) { return !empty && !terminated; })) {
       if (!terminated) {
+        const auto start = Profiler::Clock::now();
         task();
+        const auto end = Profiler::Clock::now();
+        profiler->logTask(end - start);
       }
     } else if (waiting) {
       idle_callback();

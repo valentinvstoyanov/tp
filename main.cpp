@@ -76,11 +76,14 @@ int main() {
   ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT, profiler);
   for (auto i = 0; i < 10; ++i) {
     thread_pool.add([i] {
-      std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));
+      //std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));
       std::cout << i << '\n';
     });
   }
   thread_pool.waitTasks();
+
+  //TODO: the nullptr is most likely due to the move and copy of the shared_ptr
+  //TODO: make the log...Before/After with object or just log...(lambda) so that it's like transaction and to ensure that both will be locked.
   std::cout << *profiler << std::endl;
 
 //  std::vector<int> v(1000, 1);
