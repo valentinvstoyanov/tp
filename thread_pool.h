@@ -9,9 +9,7 @@
 #include <functional>
 #include <random>
 #include <utility>
-#include "join_threads.h"
 #include "destruction_policy.h"
-#include "thread_safe_queue.h"
 #include "worker.h"
 
 class ThreadPool {
@@ -68,7 +66,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
     for (auto i = 0; i < thread_count; ++i) {
       workers.emplace_back(
           [this](Task& task) {
-            if (terminated) {
+            if (workers.empty() || terminated) {
               return false;
             }
 
@@ -116,7 +114,7 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
     for (auto i = 0; i < thread_count; ++i) {
       workers.emplace_back(
           [this](Task& task) {
-            if (terminated) {
+            if (workers.empty() || terminated) {
               return false;
             }
 
