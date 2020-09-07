@@ -53,7 +53,7 @@ void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency())
   constexpr int val = 1;
   constexpr int mult = 3;
   constexpr int prod = val * mult;
-  using duration_cast_type = std::chrono::seconds;
+  using duration_cast_type = std::chrono::nanoseconds;
 
   std::vector<int> v(vector_size, val);
   auto f = [mult, &sleep_duration](int& x) {
@@ -65,16 +65,24 @@ void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency())
 //  std::cout << "forEach without thread pool took : " << seq_d << "\n";
 //  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEachTest without thread pool assertion failed."); });
 //  std::fill(v.begin(), v.end(), val);
+  std::cout << "===FOR EACH===================================================================================\n";
 
   std::cout << "Thread count: " << thread_count << "\n";
 
-  const auto par_w_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithCreation(v, f, thread_count)).count();
+  const auto par_w_tp_d =
+      std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithCreation(v, f, thread_count)).count();
   std::cout << "forEach with thread pool with creation and destruction took : " << par_w_tp_d << "\n";
-  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool with creation and destruction assertion failed."); });
+  std::for_each(v.begin(),
+                v.end(),
+                [](int x) {
+                  assert(x == prod && "forEach with thread pool with creation and destruction assertion failed.");
+                });
   std::fill(v.begin(), v.end(), val);
 
   ThreadPool thread_pool(thread_count);
-  const auto par_wo_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithoutCreation(v, f, thread_pool)).count();
+  const auto par_wo_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithoutCreation(v,
+                                                                                                                   f,
+                                                                                                                   thread_pool)).count();
   std::cout << "forEach with thread pool without creation and destruction took : " << par_wo_tp_d << "\n";
   std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool without creation and destruction assertion failed."); });
   std::fill(v.begin(), v.end(), val);
@@ -107,8 +115,13 @@ void taskTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
   for (auto i = 0; i < tasks_count; ++i) {
     f();
   }
-   end = std::chrono::high_resolution_clock::now();
+  end = std::chrono::high_resolution_clock::now();
   std::cout << "OpenMP : " << std::chrono::duration_cast<duration_cast_type>(end - start).count() << "\n";
+  std::for_each(v.begin(),
+                v.end(),
+                [](int x) {
+                  assert(x == prod && "forEach with OpenMP assertion failed.");
+                });
 }
 
 int main() {
@@ -117,7 +130,7 @@ int main() {
 
   //auto profiler = std::make_shared<Profiler>();
   //ThreadPool thread_pool(profiler, 3, DestructionPolicy::WAIT_CURRENT);
-//  ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
+  //ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
 //  for (auto i = 0; i < 10; ++i) {
 //    thread_pool.add([i] {
 //      std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));
