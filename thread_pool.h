@@ -171,7 +171,7 @@ void ThreadPool::waitTasks() {
   }
 
   while (idle_workers_count != workers.size()) {
-    std::this_thread::yield();//sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::yield();
   }
 
   for (auto& worker: workers) {
@@ -182,17 +182,30 @@ void ThreadPool::waitTasks() {
 
 template<typename InputIt, typename UnaryFunction>
 void ThreadPool::forEach(InputIt first, InputIt last, UnaryFunction f) {
-  auto tasks_count = std::distance(first, last);
-  auto tasks_per_worker_count = tasks_count / workers.size();
-  auto remaining_tasks_count = tasks_count % workers.size();
+  const auto tasks_count = std::distance(first, last);
+//  if (tasks_count == 1) {
+//    add([first, f] { f(*first); });
+//    return;
+//  }
 
-  for (auto& worker: workers) {
-    worker.add([first, &f, tasks_per_worker_count] { std::for_each(first, first + tasks_per_worker_count, f); });
-    first += tasks_per_worker_count;
+  const auto tasks_per_worker = tasks_count / workers.size();
+  if (tasks_per_worker > 0) {
+    for (auto& worker : workers) {
+      worker.add([this, first, tasks_per_worker, f] { forEach(first, first + tasks_per_worker, f); });
+      std::advance(first, tasks_per_worker);
+    }
   }
 
+  const auto remaining_tasks_count = tasks_count % workers.size();
   if (remaining_tasks_count > 0) {
-    add([first, last, &f] { std::for_each(first, last, f); });
+    if (remaining_tasks_count == 1) {
+      add([first, f] { f(*first); });
+    } else {
+      const auto half = remaining_tasks_count / 2;
+      add([this, first, half, f] { forEach(first, first + half, f); });
+      std::advance(first, half);
+      add([this, first, last, f] { forEach(first, last, f); });
+    }
   }
 }
 

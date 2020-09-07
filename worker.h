@@ -70,14 +70,6 @@ Worker<Task>::Worker(StealCallback steal_callback, IdleCallback idle_callback, c
 }
 #endif
 
-/*profiler(profiler_ptr),
-      queue(profiler_ptr),
-      terminated(false),
-      waiting(false),
-      steal_callback(std::move(steal_callback)),
-      idle_callback(std::move(idle_callback)),
-      thread(&Worker::workerFunction, this)*/
-
 template<typename Task>
 Worker<Task>::Worker(Worker&& other)
     : queue(std::move(other.queue)),
