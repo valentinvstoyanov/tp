@@ -39,7 +39,7 @@ class ThreadPool {
   std::vector<Worker<Task>> workers;
   std::atomic_bool terminated;
   std::atomic_bool waiting;
-  std::atomic_size_t idle_workers_count;
+  std::atomic_size_t current_tasks_count;
   DestructionPolicy destruction_policy;
 
   std::random_device random_device;
@@ -55,7 +55,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
     : terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
-      idle_workers_count(0),
+      current_tasks_count(0),
       engine(random_device()) {
   assert(thread_count > 0 && "The supplied thread count value cannot be 0");
 
@@ -80,12 +80,8 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
 
             return false;
           },
-          [this] {
-            idle_workers_count++;
-
-            while (waiting) {
-              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
-            }
+          [this] (int x){
+            current_tasks_count += x;
           }
       );
     }
@@ -103,7 +99,7 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
       terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
-      idle_workers_count(0),
+      current_tasks_count(0),
       engine(random_device()) {
   assert(thread_count > 0 && "The supplied thread count value cannot be 0");
 
@@ -128,12 +124,8 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
 
             return false;
           },
-          [this] {
-            idle_workers_count++;
-
-            while (waiting) {
-              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
-            }
+          [this] (int x) {
+            current_tasks_count += x;
           },
           profiler_ptr
       );
@@ -165,28 +157,14 @@ void ThreadPool::clearTasks() {
 }
 
 void ThreadPool::waitTasks() {
-  waiting = true;
-  for (auto& worker: workers) {
-    worker.setWait(true);
-  }
-
-  while (idle_workers_count != workers.size()) {
+  while (current_tasks_count != 0) {
     std::this_thread::yield();
   }
-
-  for (auto& worker: workers) {
-    worker.setWait(false);
-  }
-  waiting = false;
 }
 
 template<typename InputIt, typename UnaryFunction>
 void ThreadPool::forEach(InputIt first, InputIt last, UnaryFunction f) {
   const auto tasks_count = std::distance(first, last);
-//  if (tasks_count == 1) {
-//    add([first, f] { f(*first); });
-//    return;
-//  }
 
   const auto tasks_per_worker = tasks_count / workers.size();
   if (tasks_per_worker > 0) {

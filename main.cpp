@@ -48,45 +48,36 @@ std::chrono::high_resolution_clock::duration forEachTestWithOpenMP(std::size_t t
 }
 
 void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
-  constexpr size_t vector_size = 10;
-  constexpr auto sleep_duration = 10us;
+  constexpr size_t vector_size = 100000;
+  constexpr auto sleep_duration = 100us;
   constexpr int val = 1;
   constexpr int mult = 3;
   constexpr int prod = val * mult;
   using duration_cast_type = std::chrono::seconds;
 
-  std::atomic_int at(0);
-
   std::vector<int> v(vector_size, val);
-  auto f = [mult, &sleep_duration, &at](int& x) {
-    //std::this_thread::sleep_for(sleep_duration);
+  auto f = [mult, &sleep_duration](int& x) {
+    std::this_thread::sleep_for(sleep_duration);
     x *= mult;
-   // ++at;
   };
 
-  const auto seq_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithoutThreadPool(v, f)).count();
-  std::cout << "forEach without thread pool took : " << seq_d << "\n";
-  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEachTest without thread pool assertion failed."); });
-  std::fill(v.begin(), v.end(), val);
+//  const auto seq_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithoutThreadPool(v, f)).count();
+//  std::cout << "forEach without thread pool took : " << seq_d << "\n";
+//  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEachTest without thread pool assertion failed."); });
+//  std::fill(v.begin(), v.end(), val);
 
   std::cout << "Thread count: " << thread_count << "\n";
 
   const auto par_w_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithCreation(v, f, thread_count)).count();
   std::cout << "forEach with thread pool with creation and destruction took : " << par_w_tp_d << "\n";
   std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool with creation and destruction assertion failed."); });
-  std::cout << "Atomic: " << at.load() << "\n";
-  std::for_each(v.begin(),
-                v.end(),
-                [](int x) {
-                  //if (x != prod) std::cerr << "forEach with thread pool with creation and destruction assertion failed.\n";
-                  assert(x == prod && "forEach with thread pool with creation and destruction assertion failed.");
-                });
   std::fill(v.begin(), v.end(), val);
 
   ThreadPool thread_pool(thread_count);
   const auto par_wo_tp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithThreadPoolWithoutCreation(v, f, thread_pool)).count();
   std::cout << "forEach with thread pool without creation and destruction took : " << par_wo_tp_d << "\n";
   std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEach with thread pool without creation and destruction assertion failed."); });
+  std::fill(v.begin(), v.end(), val);
 
   const auto open_mp_d = std::chrono::duration_cast<duration_cast_type>(forEachTestWithOpenMP(thread_count, v, f)).count();
   std::cout << "forEach with OpenMP took : " << open_mp_d << "\n";
@@ -94,8 +85,8 @@ void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency())
 }
 
 void taskTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
-  constexpr auto tasks_count = 10000000;
-  constexpr auto sleep_duration = 10ms;
+  constexpr auto tasks_count = 100000;
+  constexpr auto sleep_duration = 10us;
   using duration_cast_type = std::chrono::milliseconds;
 
   auto f = [&sleep_duration] { std::this_thread::sleep_for(sleep_duration); };
@@ -122,11 +113,11 @@ void taskTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
 
 int main() {
   std::cout << "hardware_concurrency: " << std::thread::hardware_concurrency() << "\n";
- // forEachTest(2);
+  forEachTest(4);
 
   //auto profiler = std::make_shared<Profiler>();
   //ThreadPool thread_pool(profiler, 3, DestructionPolicy::WAIT_CURRENT);
-  //ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
+//  ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
 //  for (auto i = 0; i < 10; ++i) {
 //    thread_pool.add([i] {
 //      std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));
@@ -137,32 +128,32 @@ int main() {
 
   //std::cout << *profiler << std::endl;
 
-  std::vector<int> v(70000, 1);
-
-  {
-    ThreadPool thread_pool(5, DestructionPolicy::WAIT_ALL);
-
-//    for (auto i = 0; i < 10; ++i) {
-//      thread_pool.add([i] {
-//        std::this_thread::sleep_for(std::chrono::seconds((i * i + 3) / 10));
-//        std::cout << i << '\n';
-//      });
-//    }
-
-    thread_pool.forEach(v.begin(), v.end(), [](int& x) {
-      //std::this_thread::sleep_for(10ms);
-      x *= 3;
-    });
-
-    //std::this_thread::sleep_for(3s);
-    //thread_pool.waitTasks();
-  }
-
-  for (auto& x:v) {
-    std::cout << x << " ";
-    assert(x == 3 && "Every vector element should be 3.");
-  }
-  std::cout << "\n";
+//  std::vector<int> v(70000, 1);
+//
+//  {
+//    ThreadPool thread_pool(5, DestructionPolicy::WAIT_ALL);
+//
+////    for (auto i = 0; i < 10; ++i) {
+////      thread_pool.add([i] {
+////        std::this_thread::sleep_for(std::chrono::seconds((i * i + 3) / 10));
+////        std::cout << i << '\n';
+////      });
+////    }
+//
+//    thread_pool.forEach(v.begin(), v.end(), [](int& x) {
+//      //std::this_thread::sleep_for(10ms);
+//      x *= 3;
+//    });
+//
+//    //std::this_thread::sleep_for(3s);
+//    //thread_pool.waitTasks();
+//  }
+//
+//  for (auto& x:v) {
+//    std::cout << x << " ";
+//    assert(x == 3 && "Every vector element should be 3.");
+//  }
+//  std::cout << "\n";
 
   return 0;
 }
