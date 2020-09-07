@@ -10,12 +10,12 @@ template<typename Task>
 class Worker {
  public:
   using StealCallback = std::function<bool(Task&)>;
-  using IdleCallback = std::function<void()>;
+  using TaskCountChangedCallback = std::function<void(int)>;
 
-  Worker(StealCallback, IdleCallback);
+  Worker(StealCallback, TaskCountChangedCallback);
 
 #ifndef NDEBUG
-  Worker(StealCallback, IdleCallback, const std::shared_ptr<Profiler>&);
+  Worker(StealCallback, TaskCountChangedCallback, const std::shared_ptr<Profiler>&);
 #endif
 
   ~Worker();
@@ -31,14 +31,13 @@ class Worker {
   bool trySteal(Task& task);
 
   void terminate();
-  void setWait(bool);
 
  private:
   void workerFunction();
 
   StealingQueue<Task> queue;
   StealCallback steal_callback;
-  IdleCallback idle_callback;
+  TaskCountChangedCallback task_count_changed_callback;
   std::atomic_bool terminated;
   std::atomic_bool waiting;
   std::thread thread;
@@ -49,40 +48,32 @@ class Worker {
 };
 
 template<typename Task>
-Worker<Task>::Worker(StealCallback steal_callback, IdleCallback idle_callback)
+Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback idle_callback)
     : terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
-      idle_callback(std::move(idle_callback)),
+      task_count_changed_callback(std::move(idle_callback)),
       thread(&Worker::workerFunction, this) {
 }
 
 #ifndef NDEBUG
 template<typename Task>
-Worker<Task>::Worker(StealCallback steal_callback, IdleCallback idle_callback, const std::shared_ptr<Profiler>& profiler_ptr)
+Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback idle_callback, const std::shared_ptr<Profiler>& profiler_ptr)
     : profiler(profiler_ptr),
       queue(profiler_ptr),
       terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
-      idle_callback(std::move(idle_callback)),
+      task_count_changed_callback(std::move(idle_callback)),
       thread(&Worker::workerFunction, this) {
 }
 #endif
-
-/*profiler(profiler_ptr),
-      queue(profiler_ptr),
-      terminated(false),
-      waiting(false),
-      steal_callback(std::move(steal_callback)),
-      idle_callback(std::move(idle_callback)),
-      thread(&Worker::workerFunction, this)*/
 
 template<typename Task>
 Worker<Task>::Worker(Worker&& other)
     : queue(std::move(other.queue)),
       steal_callback(std::move(other.steal_callback)),
-      idle_callback(std::move(other.idle_callback)),
+      task_count_changed_callback(std::move(other.task_count_changed_callback)),
       terminated(other.terminated.load()),
       waiting(other.waiting.load()),
       thread(std::move(other.thread)) {
@@ -98,6 +89,7 @@ Worker<Task>::~Worker() {
 
 template<typename Task>
 void Worker<Task>::add(Task task) {
+  task_count_changed_callback(1);
   queue.push(std::move(task));
 }
 
@@ -118,13 +110,14 @@ void Worker<Task>::workerFunction() {
     if (queue.tryPop(task) ||
         steal_callback(task) ||
         queue.waitAndPopIf(task,
-                           [this](bool empty) { return waiting || terminated || !empty; },
+                           [this](bool empty) { return terminated || !empty; },
                            [this](bool empty) { return !empty && !terminated; })) {
       if (!terminated) {
 #ifndef NDEBUG
         const auto start = Profiler::Clock::now();
 #endif
         task();
+        task_count_changed_callback(-1);
 #ifndef NDEBUG
         const auto end = Profiler::Clock::now();
         if (profiler) {
@@ -132,8 +125,6 @@ void Worker<Task>::workerFunction() {
         }
 #endif
       }
-    } else if (waiting) {
-      idle_callback();
     }
   }
 }
@@ -144,14 +135,6 @@ void Worker<Task>::terminate() {
   queue.notify();
   if (thread.joinable()) {
     thread.join();
-  }
-}
-
-template<typename Task>
-void Worker<Task>::setWait(bool w) {
-  waiting = w;
-  if (w) {
-    queue.notify();
   }
 }
 

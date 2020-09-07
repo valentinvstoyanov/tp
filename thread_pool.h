@@ -9,9 +9,7 @@
 #include <functional>
 #include <random>
 #include <utility>
-#include "join_threads.h"
 #include "destruction_policy.h"
-#include "thread_safe_queue.h"
 #include "worker.h"
 
 class ThreadPool {
@@ -41,7 +39,7 @@ class ThreadPool {
   std::vector<Worker<Task>> workers;
   std::atomic_bool terminated;
   std::atomic_bool waiting;
-  std::atomic_size_t idle_workers_count;
+  std::atomic_size_t current_tasks_count;
   DestructionPolicy destruction_policy;
 
   std::random_device random_device;
@@ -57,7 +55,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
     : terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
-      idle_workers_count(0),
+      current_tasks_count(0),
       engine(random_device()) {
   assert(thread_count > 0 && "The supplied thread count value cannot be 0");
 
@@ -68,7 +66,7 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
     for (auto i = 0; i < thread_count; ++i) {
       workers.emplace_back(
           [this](Task& task) {
-            if (terminated) {
+            if (workers.empty() || terminated) {
               return false;
             }
 
@@ -82,12 +80,8 @@ ThreadPool::ThreadPool(std::size_t thread_count, DestructionPolicy destruction_p
 
             return false;
           },
-          [this] {
-            idle_workers_count++;
-
-            while (waiting) {
-              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
-            }
+          [this] (int x){
+            current_tasks_count += x;
           }
       );
     }
@@ -105,7 +99,7 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
       terminated(false),
       waiting(false),
       destruction_policy(destruction_policy),
-      idle_workers_count(0),
+      current_tasks_count(0),
       engine(random_device()) {
   assert(thread_count > 0 && "The supplied thread count value cannot be 0");
 
@@ -116,7 +110,7 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
     for (auto i = 0; i < thread_count; ++i) {
       workers.emplace_back(
           [this](Task& task) {
-            if (terminated) {
+            if (workers.empty() || terminated) {
               return false;
             }
 
@@ -130,12 +124,8 @@ ThreadPool::ThreadPool(const std::shared_ptr<Profiler>& profiler_ptr,
 
             return false;
           },
-          [this] {
-            idle_workers_count++;
-
-            while (waiting) {
-              std::this_thread::yield();//sleep_for(std::chrono::microseconds (100));
-            }
+          [this] (int x) {
+            current_tasks_count += x;
           },
           profiler_ptr
       );
@@ -167,40 +157,33 @@ void ThreadPool::clearTasks() {
 }
 
 void ThreadPool::waitTasks() {
-  waiting = true;
-  for (auto& worker: workers) {
-    worker.setWait(true);
+  while (current_tasks_count != 0) {
+    std::this_thread::yield();
   }
-
-  while (idle_workers_count != workers.size()) {
-    std::this_thread::yield();//sleep_for(std::chrono::milliseconds(50));
-  }
-
-  for (auto& worker: workers) {
-    worker.setWait(false);
-  }
-  waiting = false;
 }
 
 template<typename InputIt, typename UnaryFunction>
 void ThreadPool::forEach(InputIt first, InputIt last, UnaryFunction f) {
-  auto tasks_count = std::distance(first, last);
-  auto tasks_per_worker_count = tasks_count / workers.size();
-  auto remaining_tasks_count = tasks_count % workers.size();
+  const auto tasks_count = std::distance(first, last);
 
-  if (tasks_per_worker_count > 0) {
-    for (auto& worker: workers) {
-      worker.add([first, &f, tasks_per_worker_count, this] {
-        forEach(first, first + tasks_per_worker_count, f);
-      });
-      first += tasks_per_worker_count;
+  const auto tasks_per_worker = tasks_count / workers.size();
+  if (tasks_per_worker > 0) {
+    for (auto& worker : workers) {
+      worker.add([this, first, tasks_per_worker, f] { forEach(first, first + tasks_per_worker, f); });
+      std::advance(first, tasks_per_worker);
     }
   }
 
+  const auto remaining_tasks_count = tasks_count % workers.size();
   if (remaining_tasks_count > 0) {
-    add([first, last, &f, this] {
-      forEach(first, last, f);
-    });
+    if (remaining_tasks_count == 1) {
+      add([first, f] { f(*first); });
+    } else {
+      const auto half = remaining_tasks_count / 2;
+      add([this, first, half, f] { forEach(first, first + half, f); });
+      std::advance(first, half);
+      add([this, first, last, f] { forEach(first, last, f); });
+    }
   }
 }
 
