@@ -48,12 +48,12 @@ std::chrono::high_resolution_clock::duration forEachTestWithOpenMP(std::size_t t
 }
 
 void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
-  constexpr size_t vector_size = 100000;
-  constexpr auto sleep_duration = 100us;
+  constexpr size_t vector_size = 1000000;
+  constexpr auto sleep_duration = 10us;
   constexpr int val = 1;
   constexpr int mult = 3;
   constexpr int prod = val * mult;
-  using duration_cast_type = std::chrono::nanoseconds;
+  using duration_cast_type = std::chrono::seconds;
 
   std::vector<int> v(vector_size, val);
   auto f = [mult, &sleep_duration](int& x) {
@@ -65,8 +65,6 @@ void forEachTest(std::size_t thread_count = std::thread::hardware_concurrency())
 //  std::cout << "forEach without thread pool took : " << seq_d << "\n";
 //  std::for_each(v.begin(), v.end(), [](int x) { assert(x == prod && "forEachTest without thread pool assertion failed."); });
 //  std::fill(v.begin(), v.end(), val);
-  std::cout << "===FOR EACH===================================================================================\n";
-
   std::cout << "Thread count: " << thread_count << "\n";
 
   const auto par_w_tp_d =
@@ -117,11 +115,6 @@ void taskTest(std::size_t thread_count = std::thread::hardware_concurrency()) {
   }
   end = std::chrono::high_resolution_clock::now();
   std::cout << "OpenMP : " << std::chrono::duration_cast<duration_cast_type>(end - start).count() << "\n";
-  std::for_each(v.begin(),
-                v.end(),
-                [](int x) {
-                  assert(x == prod && "forEach with OpenMP assertion failed.");
-                });
 }
 
 int main() {
@@ -130,7 +123,7 @@ int main() {
 
   //auto profiler = std::make_shared<Profiler>();
   //ThreadPool thread_pool(profiler, 3, DestructionPolicy::WAIT_CURRENT);
-  //ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
+//  ThreadPool thread_pool(3, DestructionPolicy::WAIT_CURRENT);
 //  for (auto i = 0; i < 10; ++i) {
 //    thread_pool.add([i] {
 //      std::this_thread::sleep_for(std::chrono::seconds((i * i) / 10));

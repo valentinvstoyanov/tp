@@ -48,23 +48,23 @@ class Worker {
 };
 
 template<typename Task>
-Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback idle_callback)
+Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback on_task_count_changed)
     : terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
-      task_count_changed_callback(std::move(idle_callback)),
+      task_count_changed_callback(std::move(on_task_count_changed)),
       thread(&Worker::workerFunction, this) {
 }
 
 #ifndef NDEBUG
 template<typename Task>
-Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback idle_callback, const std::shared_ptr<Profiler>& profiler_ptr)
+Worker<Task>::Worker(StealCallback steal_callback, TaskCountChangedCallback on_task_count_changed, const std::shared_ptr<Profiler>& profiler_ptr)
     : profiler(profiler_ptr),
       queue(profiler_ptr),
       terminated(false),
       waiting(false),
       steal_callback(std::move(steal_callback)),
-      task_count_changed_callback(std::move(idle_callback)),
+      task_count_changed_callback(std::move(on_task_count_changed)),
       thread(&Worker::workerFunction, this) {
 }
 #endif

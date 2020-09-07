@@ -180,7 +180,7 @@ void ThreadPool::forEach(InputIt first, InputIt last, UnaryFunction f) {
       add([first, f] { f(*first); });
     } else {
       const auto half = remaining_tasks_count / 2;
-      add([this, first, half, f] { forEach(first, first + half, f); });
+      add([this, first, half, f] { std::for_each(first, first + half, f); });
       std::advance(first, half);
       add([this, first, last, f] { forEach(first, last, f); });
     }
